@@ -8,7 +8,7 @@ A lightweight knowledge graph generator using FastAPI and Cytoscape.js
 This project is a knowledge graph generator that utilizes FastAPI for the backend and Cytoscape.js for visualizing the graphs in the frontend. It is designed to be lightweight and easy to deploy using Docker and Kubernetes.
 
 ## Tutorial Reference
-This repository accompanies a tutorial article. You can read it [here](URL_PLACEHOLDER).
+This repository accompanies a tutorial article. You can read it [here](https://www.civo.com/learn/automated-knowledge-graph-generator).
 
 ## Prerequisites
 - **Python**: Version 3.11
