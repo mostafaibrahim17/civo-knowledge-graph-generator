@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Knowledge Graph Generator</title>
+    <!-- Cytoscape.js for graph visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; background: linear-gradient(135deg, #1a1a2e, #16213e); min-height: 100vh; color: #e0e0e0; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; padding: 30px 0; }
+        .main-content { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-top: 20px; }
+        .input-panel, .graph-panel { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 24px; }
+        textarea { width: 100%; height: 300px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 16px; font-size: 1rem; resize: vertical; }
+        button { padding: 14px 28px; margin-top: 16px; background: linear-gradient(90deg,#00d4ff,#7b2cbf); border: none; color: white; font-weight: 600; cursor: pointer; }
+        #graph-container { min-height: 500px; }
+        .legend { display: flex; gap: 20px; margin-top: 16px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .person { background: #00d4ff; }
+        .organization { background: #7b2cbf; }
+        .location { background: #00c853; }
+        .event { background: #ff9100; }
+        .status-message { margin-top: 16px; padding: 12px; border-radius: 8px; font-size: 0.9rem; }
+        .error { background: rgba(255,82,82,0.2); color: #ff8a80; border: 1px solid rgba(255,82,82,0.4); }
+        .success { background: rgba(0,200,83,0.2); color: #69f0ae; border: 1px solid rgba(0,200,83,0.4); }
+        .loading { background: rgba(0,212,255,0.2); color: #80d8ff; border: 1px solid rgba(0,212,255,0.4); }
+        @media (max-width: 900px) { .main-content { grid-template-columns: 1fr; } #graph-container { min-height: 400px; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Knowledge Graph Generator</h1>
+        <p class="subtitle">Transform text into interactive knowledge graphs using AI</p>
+    </header>
+    <div class="main-content">
+        <div class="input-panel">
+            <h2>Input Text</h2>
+            <textarea id="text-input" placeholder="Enter text to analyze..."></textarea>
+            <button id="generate-btn">Generate Knowledge Graph</button>
+            <div id="status-container"></div>
+        </div>
+        <div class="graph-panel">
+            <h2>Knowledge Graph</h2>
+            <div id="graph-container"></div>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot person"></div>Person</div>
+                <div class="legend-item"><div class="legend-dot organization"></div>Organization</div>
+                <div class="legend-item"><div class="legend-dot location"></div>Location</div>
+                <div class="legend-item"><div class="legend-dot event"></div>Event</div>
+            </div>
+            <div id="stats" class="stats"></div>
+        </div>
+    </div>
+</div>
+<script>
+// CONFIGURATION
+const API_URL = window.API_URL || "http://<BACKEND-EXTERNAL-IP>:8000";
+
+// GRAPH INITIALIZATION
+function initGraph() {
+    cy = cytoscape({
+        container: document.getElementById("graph-container"),
+        selector: "node",
+        style: [
+            { selector: "node", style: { "label": "data(id)", "width": 50, "height": 50, "font-size": "12px", "color": "#e0e0e0", "border-width": 3, "border-color": "#fff", "text-valign": "bottom", "text-margin-y": 8 } },
+            { selector: 'node[type="Person"]', style: { "background-color": "#00d4ff" } },
+            { selector: 'node[type="Organization"]', style: { "background-color": "#7b2cbf" } },
+            { selector: 'node[type="Location"]', style: { "background-color": "#00c853" } },
+            { selector: 'node[type="Event"]', style: { "background-color": "#ff9100" } },
+            { selector: "edge", style: { "line-color": "#666", "target-arrow-color": "#666", "target-arrow-shape": "triangle", "curve-style": "bezier", "label": "data(relation)", "font-size": "10px", "color": "#999" } }
+        ],
+        layout: { name: "grid" }
+    });
+}
+
+// STATUS & STATS HELPERS
+function showStatus(msg, type) {
+    document.getElementById("status-container").innerHTML = `<div class="status-message ${type}">${msg}</div>`;
+}
+function clearStatus() {
+    document.getElementById("status-container").innerHTML = "";
+}
+function updateStats(nodes, edges) {
+    document.getElementById("stats").innerHTML = `<div><strong>${nodes}</strong> entities</div><div><strong>${edges}</strong> relationships</div>`;
+}
+
+// MAIN FUNCTION
+async function generateGraph() {
+    const text = document.getElementById("text-input").value.trim();
+    const btn = document.getElementById("generate-btn");
+    if (!text) {
+        showStatus("Please enter some text first.", "error");
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Generating...";
+    showStatus("Analyzing text...", "loading");
+    try {
+        const response = await fetch(`${API_URL}/graphify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        });
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.detail || "Server error");
+        }
+        const data = await response.json();
+        if (!data.nodes?.length) {
+            showStatus("No entities found. Try a longer text sample.", "error");
+            updateStats(0, 0);
+            cy.elements().remove();
+            return;
+        }
+        cy.elements().remove();
+        data.nodes.forEach(n => cy.add({ group: "nodes", data: { id: n.id, type: n.type } }));
+        data.edges.forEach(e => cy.add({ group: "edges", data: { source: e.source, target: e.target, relation: e.relation.replace(/_/g, " ") } }));
+        cy.layout({ name: "cose", animate: true, idealEdgeLength: 100, nodeRepulsion: 8000 });
+        showStatus(`Extracted ${data.nodes.length} entities and ${data.edges.length} relationships.`, "success");
+        updateStats(data.nodes.length, data.edges.length);
+    } catch (err) {
+        showStatus(`Error: ${err.message}`, "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Generate Knowledge Graph";
+    }
+}
+
+// INITIALIZATION
+document.addEventListener("DOMContentLoaded", () => {
+    initGraph();
+    document.getElementById("text-input").addEventListener("keydown", e => {
+        if (e.ctrlKey && e.key === "Enter") generateGraph();
+    });
+    document.getElementById("generate-btn").onclick = generateGraph;
+});
+</script>
+</body>
+</html>
